@@ -18,7 +18,6 @@
 # project. You are free to use and extend these projects for educational
 # purposes. The Pacman AI projects were developed at UC Berkeley, primarily by
 # John DeNero (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
-# For more info, see http://inst.eecs.berkeley.edu/~cs188/sp09/pacman.html
 
 from util import *
 import time, os
@@ -567,7 +566,9 @@ class Game:
         sys.stderr = OLD_STDERR
 
 
-    def run( self ):
+    def run( self, if_autograder=False):
+        self.moveTimes = [[] for _ in range(len(self.agents))]
+
         """
         Main control loop for game play.
         """
@@ -631,6 +632,7 @@ class Game:
                         except TimeoutFunctionException:
                             skip_action = True
                         move_time += time.time() - start_time
+                        # self.agentTotalTimes[agentIndex] += move_time
                         self.unmute()
                     except Exception as data:
                         self._agentCrash(agentIndex, quiet=False)
@@ -644,6 +646,10 @@ class Game:
 
             # Solicit an action
             action = None
+
+            startTime = time.time()
+
+
             self.mute(agentIndex)
             if self.catchExceptions:
                 try:
@@ -688,7 +694,8 @@ class Game:
             else:
                 action = agent.getAction(observation)
             self.unmute()
-
+            timeElapsed = time.time() - startTime
+            self.moveTimes[agentIndex].append(timeElapsed)
             # Execute the action
             self.moveHistory.append( (agentIndex, action) )
             if self.catchExceptions:
@@ -730,3 +737,5 @@ class Game:
                     self.unmute()
                     return
         self.display.finish()
+        if if_autograder:
+            return self.moveTimes

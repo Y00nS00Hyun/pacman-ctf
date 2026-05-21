@@ -1,5 +1,4 @@
-# pacman-ctf
-## Python3 version of UC Berkeley's CS 188 Pacman Capture the Flag project
+## Pacman Competition
 
 ### Original Licensing Agreement (which also extends to this version)
 Licensing Information:  You are free to use or extend these projects for
@@ -14,12 +13,13 @@ Student side autograding was added by Brad Miller, Nick Hay, and
 Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
 ### This version attribution
-This version (cshelton/pacman-ctf github repo) was modified by Christian
+This version was modified by Christian
 Shelton (cshelton@cs.ucr.edu) on June 23, 2020 to run under Python 3.
+
+And then, the project has been updated for CAU CSE 17182 course (Artificial Intelligence).
 
 
 ## Getting Started
-(much of this is from the original HTML documentation, in origdoc/)
 
 ### Short Version:
 
@@ -37,23 +37,23 @@ run `python capture.py --help` to see other options
 The challenge is to design agents to play Capture-the-Flag in a Pacman-like
 arena.   
 
-![Example Game](/origdoc/capture_the_flag.png)
-
 #### Rules
 
 **Layout:** The Pacman map is divided into two halves: blue (right) and red (left).  Red agents (which all have even indices) must defend the red food while trying to eat the blue food.  When on the red side, a red agent is a ghost.  When crossing into enemy territory, the agent becomes a Pacman.
 
-**Scoring:**  When a Pacman eats a food dot, the food is stored up inside of that Pacman and removed from the board.  When a Pacman returns to his side of the board, he "deposits" the food dots he is carrying, earning one point per food pellet delivered.  Red team scores are positive, while Blue team scores are negative.
+**Scoring:**  When a Pacman eats a food dot, it earns one point per food pellet.  Red team scores are positive, while Blue team scores are negative.
 
-**Eating Pacman:** When a Pacman is eaten by an opposing ghost, the Pacman returns to its starting position (as a ghost).  The food dots that the Pacman was carrying are deposited back onto the board.  No points are awarded for eating an opponent.
+**Eating Pacman:** When a Pacman is eaten by an opposing ghost, the Pacman returns to its starting position (as a ghost).  Three points are awarded for eating an opponent.
 
-**Power capsules:** If Pacman eats a power capsule, agents on the opposing team become "scared" for the next 40 moves, or until they are eaten and respawn, whichever comes sooner.  Agents that are "scared" are susceptible while in the form of ghosts (i.e. while on their own team's side) to being eaten by Pacman.  Specifically, if Pacman collides with a "scared" ghost, Pacman is unaffected and the ghost respawns at its starting position (no longer in the "scared" state).
+**Power capsules:** If Pacman eats a power capsule, agents on the opposing team become “scared” for the next 40 moves, or until they are eaten and respawn, whichever comes sooner.  Agents that are “scared” are susceptible while in the form of ghosts (i.e. while on their own team’s side) to being eaten by Pacman.  Specifically, if Pacman collides with a “scared” ghost, Pacman can eat the ghost (and earn three points), and the ghost respawns at its starting position (no longer in the “scared” state).
+
+**Turn Order:** In each game, agents act in the following fixed order: Red Agent 1 → Blue Agent 1 → Red Agent 2 → Blue Agent 2. Therefore, the Red team always moves slightly earlier than the Blue team.
 
 **Observations:** Agents can only observe an opponent's configuration (position and direction) if they or their teammate is within 5 squares (Manhattan distance).  In addition, an agent always gets a noisy distance reading for each agent on the board, which can be used to approximately locate unobserved opponents.
 
-**Winning:** A game ends when one team eats all but two of the opponents' dots.  Games are also limited to 1200 agent moves (300 moves per each of the four agents).  If this move limit is reached, whichever team has eaten the most food wins. If the score is zero (i.e., tied) this is recorded as a tie game.
+**Winning:** A game ends when one team eats all but two of the opponents' dots.  Games are also limited to 3000 agent moves (750 moves per each of the four agents).  If this move limit is reached, whichever team has eaten the most food wins. If the score is zero (i.e., tied) this is recorded as a tie game.
 
-**Computation Time:** Each agent has 1 second to return each action. Each move which does not return within one second will incur a warning.  After three warnings, or any single move taking more than 3 seconds, the game is forfeit.  There will be an initial start-up allowance of 15 seconds (use the `registerInitialState` method). If you agent times out or otherwise throws an exception, an error message will be present in the log files, which you can download from the results page (see below).
+**Computation Time:** Each agent has 1 second to return each action. Each move which does not return within one second will incur a warning.  After three warnings, or any single move taking more than 3 seconds, the game is forfeit.  There will be an initial start-up allowance of 5 seconds (use the `registerInitialState` method). If you agent times out or otherwise throws an exception, an error message will be present in the log files, which you can download from the results page (see below).
 
 #### Key data structures
 
