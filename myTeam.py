@@ -10,6 +10,7 @@
 
 from captureAgents import CaptureAgent
 import random, time, util
+from collections import deque
 from game import Directions, Actions
 from util import nearestPoint
 
@@ -118,6 +119,9 @@ class BaseAgent(CaptureAgent):
     if _DEAD_END_DEPTH is None:
       globals()['_DEAD_END_DEPTH'] = _computeDeadEndDepth(walls)
     self.deadEndDepth = _DEAD_END_DEPTH
+
+    # Per-agent recent-positions ring buffer for loop detection (DRP)
+    self.recentPositions = deque(maxlen=8)
 
   def _computeBoundary(self, gameState):
     layout = gameState.data.layout
@@ -239,11 +243,48 @@ class OffensiveAgent(BaseAgent):
 
   def chooseAction(self, gameState):
     self.updateBeliefs(gameState)
+    self.recentPositions.append(gameState.getAgentPosition(self.index))
+
     actions = gameState.getLegalActions(self.index)
+
+    # Anticipatory ghost: drop actions that land us on a cell a non-scared
+    # enemy ghost could reach next turn (and eat us). Fall back if all unsafe.
+    deadly = self._deadlyNextPositions(gameState)
+    if deadly:
+      safe = [a for a in actions if self._nextGridPos(gameState, a) not in deadly]
+      if safe:
+        actions = safe
+
     values = [self.evaluate(gameState, a) for a in actions]
     maxValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == maxValue]
     return random.choice(bestActions)
+
+  def _nextGridPos(self, gameState, action):
+    succ = self.getSuccessor(gameState, action)
+    p = succ.getAgentState(self.index).getPosition()
+    return (int(p[0]), int(p[1]))
+
+  def _deadlyNextPositions(self, gameState):
+    """Cells that a non-scared enemy ghost could be on after their next move."""
+    my_state = gameState.getAgentState(self.index)
+    # We only fear being eaten when we'd land as a Pacman (in enemy territory).
+    # But we conservatively also fear stepping into ghost-occupied cells at home.
+    deadly = set()
+    for opp in self.getOpponents(gameState):
+      opp_pos = gameState.getAgentPosition(opp)
+      opp_state = gameState.getAgentState(opp)
+      if opp_pos is None:
+        continue
+      if opp_state.isPacman:
+        continue  # they're a Pacman, can't eat us
+      if opp_state.scaredTimer > 1:
+        continue  # scared ghost is harmless
+      possibilities = Actions.getLegalNeighbors(opp_pos, self.walls)
+      possibilities.append(opp_pos)
+      for p in possibilities:
+        deadly.add((int(p[0]), int(p[1])))
+    return deadly
 
   def _getThreats(self, gameState):
     """Enemy ghosts (on their side, non-scared) — use visible pos or estimate."""
@@ -274,11 +315,13 @@ class OffensiveAgent(BaseAgent):
     myState = successor.getAgentState(self.index)
     myPos = myState.getPosition()
 
-    # --- Food ---
+    # --- Food (prefer "safe" food: cells where deadEndDepth == 0) ---
     foodList = self.getFood(successor).asList()
     features['successorScore'] = -len(foodList)
     if foodList:
-      features['distanceToFood'] = min(self.getMazeDistance(myPos, f) for f in foodList)
+      safeFood = [f for f in foodList if self.deadEndDepth.get(f, 0) == 0]
+      target = safeFood if safeFood else foodList
+      features['distanceToFood'] = min(self.getMazeDistance(myPos, f) for f in target)
 
     # --- Return logic ---
     features['carriedFood'] = myState.numCarrying
@@ -318,6 +361,12 @@ class OffensiveAgent(BaseAgent):
     if action == Directions.STOP:
       features['stop'] = 1
 
+    # --- Loop penalty (DRP): discourage revisiting recently-seen cells ---
+    succPos = (int(myPos[0]), int(myPos[1]))
+    visits = sum(1 for p in self.recentPositions if p == succPos)
+    if visits >= 2:
+      features['loopVisits'] = visits
+
     return features
 
   def getWeights(self, gameState, action):
@@ -344,6 +393,7 @@ class OffensiveAgent(BaseAgent):
       'carriedFood': 0,
       'deadEndDepth': -15,  # each step deeper into a dead-end is costly when chased
       'distanceToCapsule': 0,
+      'loopVisits': -8,     # mild penalty per revisit; breaks oscillation
     }
 
     # --- Scared mode: enemies can't hurt us, go aggressive ---
@@ -385,6 +435,7 @@ class DefensiveAgent(BaseAgent):
 
   def chooseAction(self, gameState):
     self.updateBeliefs(gameState)
+    self.recentPositions.append(gameState.getAgentPosition(self.index))
 
     # Food disappearance → invader was there; collapse belief
     currentFood = self.getFoodYouAreDefending(gameState).asList()
@@ -497,6 +548,12 @@ class DefensiveAgent(BaseAgent):
     if action == rev:
       features['reverse'] = 1
 
+    # Loop penalty (DRP) — break boundary oscillation
+    succPos = (int(myPos[0]), int(myPos[1]))
+    visits = sum(1 for p in self.recentPositions if p == succPos)
+    if visits >= 2:
+      features['loopVisits'] = visits
+
     return features
 
   def getWeights(self, gameState, action):
@@ -511,6 +568,7 @@ class DefensiveAgent(BaseAgent):
       'scaredAvoid': -500,
       'stop': -100,
       'reverse': -2,
+      'loopVisits': -8,
     }
 
     # When a visible invader is close (and we're not scared), drop everything and chase.
