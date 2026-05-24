@@ -381,16 +381,18 @@ class DefensiveAgent(BaseAgent):
   def registerInitialState(self, gameState):
     BaseAgent.registerInitialState(self, gameState)
     self.lastFood = self.getFoodYouAreDefending(gameState).asList()
-    self.currentTarget = self.midBoundary
+    self.target = self.midBoundary
 
   def chooseAction(self, gameState):
     self.updateBeliefs(gameState)
 
-    # Food disappearance → invader was there; collapse belief
+    # Food disappearance → strong hint about invader location
     currentFood = self.getFoodYouAreDefending(gameState).asList()
     eatenPositions = set(self.lastFood) - set(currentFood)
     if eatenPositions:
+      # Pick the eaten food closest in belief to one of the enemies, collapse there.
       eaten = next(iter(eatenPositions))
+      self.target = eaten
       bestOpp, bestProb = None, -1
       for opp in self.getOpponents(gameState):
         prob = _BELIEFS.get(opp, util.Counter())[eaten]
@@ -402,8 +404,10 @@ class DefensiveAgent(BaseAgent):
         _BELIEFS[bestOpp] = b
     self.lastFood = currentFood
 
-    # Smart target selection (intercept the food invader is heading for)
-    self.currentTarget = self._pickTarget(gameState)
+    # If reached current target with no visible/known invader nearby → patrol
+    myPos = gameState.getAgentPosition(self.index)
+    if myPos == self.target:
+      self.target = self.midBoundary
 
     actions = gameState.getLegalActions(self.index)
     values = [self.evaluate(gameState, a) for a in actions]
@@ -411,55 +415,18 @@ class DefensiveAgent(BaseAgent):
     bestActions = [a for a, v in zip(actions, values) if v == maxValue]
     return random.choice(bestActions)
 
-  def _pickTarget(self, gameState):
-    """
-    Smart target:
-      - Closest visible invader → food (we're defending) closest to them = intercept point
-      - Else estimated invader on our side → same intercept logic with estimate
-      - Else patrol middle of boundary
-    """
-    myPos = gameState.getAgentPosition(self.index)
-
-    visibleInvaders = []
-    estimatedInvaders = []
-    for opp in self.getOpponents(gameState):
-      visPos = gameState.getAgentPosition(opp)
-      state = gameState.getAgentState(opp)
-      if visPos is not None and state.isPacman:
-        visibleInvaders.append(visPos)
-      elif visPos is None:
-        est = self.getMostLikelyPos(opp)
-        if est is not None and self.isOurSide(est):
-          estimatedInvaders.append(est)
-
-    invaderPos = None
-    if visibleInvaders:
-      invaderPos = min(visibleInvaders, key=lambda p: self.getMazeDistance(myPos, p))
-    elif estimatedInvaders:
-      invaderPos = min(estimatedInvaders, key=lambda p: self.getMazeDistance(myPos, p))
-
-    if invaderPos is not None:
-      myFood = self.getFoodYouAreDefending(gameState).asList()
-      myCapsules = self.getCapsulesYouAreDefending(gameState)
-      important = myFood + myCapsules
-      if important:
-        # Intercept at the food/capsule the invader is closest to
-        return min(important, key=lambda f: self.getMazeDistance(invaderPos, f))
-      return invaderPos
-
-    return self.midBoundary
-
   def _getInvaders(self, gameState, successor):
     """Visible OR estimated invaders (Pacmen on our side)."""
     invaders = []
     for opp, pos, isPacGuess, visible in self.getEnemyEstimates(gameState):
       if visible:
+        # Use successor's view for visible enemies — pos may shift slightly
         sState = successor.getAgentState(opp)
         sPos = sState.getPosition()
         if sState.isPacman and sPos is not None:
           invaders.append((opp, sPos, True))
       else:
-        if isPacGuess:
+        if isPacGuess:  # estimated to be on our side
           invaders.append((opp, pos, False))
     return invaders
 
@@ -472,23 +439,25 @@ class DefensiveAgent(BaseAgent):
     features['onDefense'] = 0 if myState.isPacman else 1
 
     invaders = self._getInvaders(gameState, successor)
+    # Separate visible from estimated; visible counts harder for numInvaders.
     visibleInvaders = [i for i in invaders if i[2]]
     features['numInvaders'] = len(visibleInvaders)
 
     if invaders:
+      # Prefer visible if any, else closest estimated
       if visibleInvaders:
         dists = [self.getMazeDistance(myPos, p) for _, p, _ in visibleInvaders]
       else:
         dists = [self.getMazeDistance(myPos, p) for _, p, _ in invaders]
       features['invaderDistance'] = min(dists)
+    else:
+      features['distanceToTarget'] = self.getMazeDistance(myPos, self.target)
 
-    # Always pull toward chosen target (intercept point / patrol point)
-    features['distanceToTarget'] = self.getMazeDistance(myPos, self.currentTarget)
-
-    # Avoid getting eaten while scared — keep distance >= 3
+    # Avoid invader when we're scared (don't get eaten)
     if myState.scaredTimer > 0 and invaders:
+      # Keep distance 2 — close enough to harass but not be eaten
       closest = min(self.getMazeDistance(myPos, p) for _, p, _ in invaders)
-      if closest < 3:
+      if closest < 2:
         features['scaredAvoid'] = 1
 
     if action == Directions.STOP:
@@ -500,34 +469,12 @@ class DefensiveAgent(BaseAgent):
     return features
 
   def getWeights(self, gameState, action):
-    myState = gameState.getAgentState(self.index)
-    myPos = myState.getPosition()
-
-    weights = {
+    return {
       'onDefense': 10000,
       'numInvaders': -1000,
-      'invaderDistance': -3,
+      'invaderDistance': -10,
       'distanceToTarget': -5,
       'scaredAvoid': -500,
       'stop': -100,
       'reverse': -2,
     }
-
-    # When a visible invader is close (and we're not scared), drop everything and chase.
-    visibleInv = []
-    for opp in self.getOpponents(gameState):
-      pos = gameState.getAgentPosition(opp)
-      if pos is not None and gameState.getAgentState(opp).isPacman:
-        visibleInv.append(pos)
-
-    if visibleInv and myState.scaredTimer == 0:
-      minDist = min(self.getMazeDistance(myPos, p) for p in visibleInv)
-      if minDist <= 3:
-        weights['invaderDistance'] = -20
-        weights['distanceToTarget'] = 0
-
-    # Scared: never chase, just maintain distance
-    if myState.scaredTimer > 0:
-      weights['invaderDistance'] = 0
-
-    return weights
