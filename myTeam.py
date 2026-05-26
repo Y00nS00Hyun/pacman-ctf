@@ -237,10 +237,62 @@ class OffensiveAgent(BaseAgent):
       if safe:
         actions = safe
 
-    values = [self.evaluate(gameState, a) for a in actions]
+    if self._inTacticalSituation(gameState):
+      values = [self._minimaxValue(gameState, a) for a in actions]
+    else:
+      values = [self.evaluate(gameState, a) for a in actions]
+
     maxValue = max(values)
     bestActions = [a for a, v in zip(actions, values) if v == maxValue]
     return random.choice(bestActions)
+
+  def _inTacticalSituation(self, gameState):
+    myState = gameState.getAgentState(self.index)
+    if not myState.isPacman:
+      return False
+    myPos = gameState.getAgentPosition(self.index)
+    for opp in self.getOpponents(gameState):
+      opp_pos = gameState.getAgentPosition(opp)
+      opp_state = gameState.getAgentState(opp)
+      if opp_pos is None or opp_state.isPacman or opp_state.scaredTimer > 1:
+        continue
+      if self.getMazeDistance(myPos, opp_pos) <= 4:
+        return True
+    return False
+
+  def _minimaxValue(self, gameState, my_action):
+    succ = self.getSuccessor(gameState, my_action)
+    my_pos = succ.getAgentState(self.index).getPosition()
+    base_my_pos = gameState.getAgentState(self.index).getPosition()
+
+    if my_pos == self.start and base_my_pos != self.start:
+      return -1e6
+
+    closest_idx = None
+    closest_dist = float('inf')
+    for opp in self.getOpponents(gameState):
+      opp_pos = gameState.getAgentPosition(opp)
+      opp_state = gameState.getAgentState(opp)
+      if opp_pos is None or opp_state.isPacman or opp_state.scaredTimer > 1:
+        continue
+      d = self.getMazeDistance(my_pos, opp_pos)
+      if d < closest_dist:
+        closest_dist = d
+        closest_idx = opp
+
+    if closest_idx is None:
+      return self.evaluate(gameState, my_action)
+
+    worst = float('inf')
+    for ghost_action in succ.getLegalActions(closest_idx):
+      succ2 = succ.generateSuccessor(closest_idx, ghost_action)
+      my_pos2 = succ2.getAgentState(self.index).getPosition()
+      if my_pos2 == self.start and base_my_pos != self.start:
+        return -1e6
+      v = self.evaluate(succ2, Directions.STOP)
+      if v < worst:
+        worst = v
+    return worst
 
   def _nextGridPos(self, gameState, action):
     succ = self.getSuccessor(gameState, action)
