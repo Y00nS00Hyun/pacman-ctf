@@ -419,6 +419,9 @@ class DefensiveAgent(BaseAgent):
 
   def _pickTarget(self, gameState):
     myPos = gameState.getAgentPosition(self.index)
+    myFood = self.getFoodYouAreDefending(gameState).asList()
+    myCapsules = self.getCapsulesYouAreDefending(gameState)
+    important = myFood + myCapsules
 
     visibleInvaders = []
     estimatedInvaders = []
@@ -432,16 +435,18 @@ class DefensiveAgent(BaseAgent):
         if est is not None and self.isOurSide(est):
           estimatedInvaders.append(est)
 
+    def threatScore(invPos):
+      if important:
+        return min(self.getMazeDistance(invPos, f) for f in important)
+      return self.getMazeDistance(myPos, invPos)
+
     invaderPos = None
     if visibleInvaders:
-      invaderPos = min(visibleInvaders, key=lambda p: self.getMazeDistance(myPos, p))
+      invaderPos = min(visibleInvaders, key=threatScore)
     elif estimatedInvaders:
-      invaderPos = min(estimatedInvaders, key=lambda p: self.getMazeDistance(myPos, p))
+      invaderPos = min(estimatedInvaders, key=threatScore)
 
     if invaderPos is not None:
-      myFood = self.getFoodYouAreDefending(gameState).asList()
-      myCapsules = self.getCapsulesYouAreDefending(gameState)
-      important = myFood + myCapsules
       if important:
         return min(important, key=lambda f: self.getMazeDistance(invaderPos, f))
       return invaderPos

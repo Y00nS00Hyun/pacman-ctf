@@ -16,3 +16,10 @@ score
 *.swo
 .DS_Store
 Thumbs.db
+
+# Local test opponents (not part of submission)
+camperTeam.py
+dblDefense.py
+dblOffense.py
+greedyEater.py
+randomTeam.py
