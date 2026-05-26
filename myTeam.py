@@ -98,10 +98,6 @@ def _initBeliefs(gameState, opponents):
 class BaseAgent(CaptureAgent):
 
   def registerInitialState(self, gameState):
-    global _INIT_DONE, _BELIEFS
-    if self.index == self.getTeam(gameState)[0] if hasattr(self, 'red') else False:
-      pass
-
     CaptureAgent.registerInitialState(self, gameState)
     self.start = gameState.getAgentPosition(self.index)
     self.boundary = self._computeBoundary(gameState)
@@ -300,7 +296,6 @@ class OffensiveAgent(BaseAgent):
     return (int(p[0]), int(p[1]))
 
   def _deadlyNextPositions(self, gameState):
-    my_state = gameState.getAgentState(self.index)
     deadly = set()
     for opp in self.getOpponents(gameState):
       opp_pos = gameState.getAgentPosition(opp)
@@ -397,7 +392,6 @@ class OffensiveAgent(BaseAgent):
 
     threats = self._getThreats(gameState)
     ghostNear = False
-    minDist = None
     if myState.isPacman and threats:
       minDist = min(self.getMazeDistance(myPos, p) for _, p, _ in threats)
       if minDist <= self.SAFE_DISTANCE:
