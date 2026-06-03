@@ -35,6 +35,7 @@ def createTeam(firstIndex, secondIndex, isRed,
 _BELIEFS = {}
 _INIT_DONE = False
 _DEAD_END_DEPTH = None
+_AGENT_TARGET = {}
 
 
 def _computeDeadEndDepth(walls):
@@ -285,7 +286,7 @@ class OffensiveAgent(BaseAgent):
     if not visibleInvaders:
       return None
     closest = min(visibleInvaders, key=lambda p: self.getMazeDistance(myPos, p))
-    if self.getMazeDistance(myPos, closest) > 5:
+    if self.getMazeDistance(myPos, closest) > 8:
       return None
     scored = []
     for action in actions:
@@ -354,14 +355,19 @@ class OffensiveAgent(BaseAgent):
 
   def _deadlyNextPositions(self, gameState):
     deadly = set()
+    myPos = gameState.getAgentPosition(self.index)
     for opp in self.getOpponents(gameState):
       opp_pos = gameState.getAgentPosition(opp)
       opp_state = gameState.getAgentState(opp)
-      if opp_pos is None:
-        continue
       if opp_state.isPacman:
         continue
       if opp_state.scaredTimer > 1:
+        continue
+      if opp_pos is None:
+        # Particle filter estimate: only mark if very likely nearby
+        est = self.getMostLikelyPos(opp)
+        if est is not None and self.getMazeDistance(myPos, est) <= 2:
+          deadly.add((int(est[0]), int(est[1])))
         continue
       possibilities = Actions.getLegalNeighbors(opp_pos, self.walls)
       possibilities.append(opp_pos)
@@ -399,8 +405,17 @@ class OffensiveAgent(BaseAgent):
     foodList = self.getFood(successor).asList()
     features['successorScore'] = -len(foodList)
     if foodList:
-      safeFood = [f for f in foodList if self.deadEndDepth.get(f, 0) == 0]
-      target = safeFood if safeFood else foodList
+      nearThreats = self._getThreats(gameState)
+      ghostClose = False
+      if nearThreats and myState.isPacman:
+        minThreatDist = min(self.getMazeDistance(myPos, p) for _, p, _ in nearThreats)
+        if minThreatDist <= self.SAFE_DISTANCE:
+          ghostClose = True
+      if ghostClose:
+        safeFood = [f for f in foodList if self.deadEndDepth.get(f, 0) == 0]
+        target = safeFood if safeFood else foodList
+      else:
+        target = foodList
       features['distanceToFood'] = min(self.getMazeDistance(myPos, f) for f in target)
 
     features['carriedFood'] = myState.numCarrying
@@ -448,7 +463,7 @@ class OffensiveAgent(BaseAgent):
     succPos = (int(myPos[0]), int(myPos[1]))
     visits = sum(1 for p in self.recentPositions if p == succPos)
     if visits >= 2:
-      features['loopVisits'] = visits
+      features['loopVisits'] = visits * visits
 
     return features
 
@@ -479,8 +494,10 @@ class OffensiveAgent(BaseAgent):
       'loopVisits': -8,
     }
 
+    homeDistance = self.distanceToHome(myPos)
+
     # Instant return: near boundary with any food
-    if carrying >= 1 and self.distanceToHome(myPos) <= 2:
+    if carrying >= 1 and homeDistance <= 2:
       weights['distanceToHome'] = -200
       return weights
 
@@ -569,11 +586,18 @@ class DefensiveAgent(BaseAgent):
     return score <= -6 and timeleft < 800
 
   def _emergencyOffenseAction(self, gameState):
+    myState = gameState.getAgentState(self.index)
     myPos = gameState.getAgentPosition(self.index)
     foodList = self.getFood(gameState).asList()
     actions = gameState.getLegalActions(self.index)
-    if not foodList or not actions:
-      return random.choice(actions) if actions else Directions.STOP
+    if not actions:
+      return Directions.STOP
+    # Bank carried food before attacking
+    if myState.numCarrying > 0:
+      return min(actions, key=lambda a: self.distanceToHome(
+          self.getSuccessor(gameState, a).getAgentState(self.index).getPosition()))
+    if not foodList:
+      return random.choice(actions)
 
     threats = []
     for opp in self.getOpponents(gameState):
@@ -688,7 +712,7 @@ class DefensiveAgent(BaseAgent):
     succPos = (int(myPos[0]), int(myPos[1]))
     visits = sum(1 for p in self.recentPositions if p == succPos)
     if visits >= 2:
-      features['loopVisits'] = visits
+      features['loopVisits'] = visits * visits
 
     return features
 
