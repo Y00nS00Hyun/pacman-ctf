@@ -220,8 +220,9 @@ class OffensiveAgent(BaseAgent):
     myState = gameState.getAgentState(self.index)
     timeleft = gameState.data.timeleft
 
-    # 1. Emergency return: time almost up and carrying food
-    if timeleft < 200 and myState.numCarrying > 0:
+    # 1. Emergency return: dynamic based on actual distance to home
+    homeDistance = self.distanceToHome(gameState.getAgentPosition(self.index))
+    if myState.numCarrying > 0 and timeleft < homeDistance * 4 + 20:
       return min(actions, key=lambda a: self.distanceToHome(
           self.getSuccessor(gameState, a).getAgentState(self.index).getPosition()))
 
@@ -380,12 +381,14 @@ class OffensiveAgent(BaseAgent):
       threats.append((opp, pos, visible))
     return threats
 
-  def _enemiesScared(self, gameState):
+  def _getGhostStatus(self, gameState):
+    scared, active = [], []
     for opp in self.getOpponents(gameState):
       s = gameState.getAgentState(opp)
-      if s.scaredTimer > 1 and not s.isPacman:
-        return True
-    return False
+      if s.isPacman:
+        continue
+      (scared if s.scaredTimer > 1 else active).append(opp)
+    return scared, active
 
   def getFeatures(self, gameState, action):
     features = util.Counter()
@@ -462,7 +465,7 @@ class OffensiveAgent(BaseAgent):
       if minGhostDistW <= self.SAFE_DISTANCE:
         ghostNear = True
 
-    enemiesScared = self._enemiesScared(gameState)
+    scaredGhosts, activeGhosts = self._getGhostStatus(gameState)
 
     weights = {
       'successorScore': 100,
@@ -488,13 +491,17 @@ class OffensiveAgent(BaseAgent):
       weights['distanceToFood'] = -5
       weights['deadEndDepth'] = -5
 
-    if enemiesScared:
+    if scaredGhosts and not activeGhosts:
+      # All ghosts scared: ignore avoidance entirely, chase scared ghosts
       weights['ghostDistance'] = 0
       weights['ghostThreat'] = 0
       weights['deadEndDepth'] = 0
       weights['distanceToHome'] = 0
       weights['distanceToScaredGhost'] = -8
       return weights
+    elif scaredGhosts and activeGhosts:
+      # Mixed: keep active ghost avoidance, but also pursue scared ghosts
+      weights['distanceToScaredGhost'] = -8
 
     # Proactive capsule: ghost approaching from 10 steps out
     if myState.isPacman and threats:
