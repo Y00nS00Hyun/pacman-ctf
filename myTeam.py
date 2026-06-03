@@ -265,7 +265,10 @@ class OffensiveAgent(BaseAgent):
     score = self.getScore(gameState)
     timeleft = gameState.data.timeleft
     myState = gameState.getAgentState(self.index)
-    return score >= 10 and timeleft < 300 and myState.numCarrying == 0
+    enemy_carrying = sum(gameState.getAgentState(opp).numCarrying
+                         for opp in self.getOpponents(gameState))
+    effective_score = score - enemy_carrying
+    return effective_score >= 8 and timeleft < 400 and myState.numCarrying == 0
 
   def _endgameDefenseAction(self, gameState, actions):
     myState = gameState.getAgentState(self.index)
@@ -511,6 +514,12 @@ class OffensiveAgent(BaseAgent):
       weights['distanceToHome'] = -200
       return weights
 
+    # Comeback return: carrying enough food to flip the score
+    score = self.getScore(gameState)
+    if score < 0 and carrying >= abs(score) + 1:
+      weights['distanceToHome'] = -300
+      return weights
+
     # All-but-two endgame: sprint aggressively for remaining food
     remaining = len(self.getFood(gameState).asList())
     if remaining <= 4:
@@ -537,7 +546,13 @@ class OffensiveAgent(BaseAgent):
     if ghostNear:
       weights['distanceToCapsule'] = -25
 
-    if carrying >= self.RETURN_THRESHOLD or ghostNear:
+    effective_threshold = self.RETURN_THRESHOLD
+    if score <= -3:
+      effective_threshold = max(2, self.RETURN_THRESHOLD - 1)
+    elif score >= 5:
+      effective_threshold = self.RETURN_THRESHOLD + 1
+
+    if carrying >= effective_threshold or ghostNear:
       weights['distanceToHome'] = -15 - 3 * carrying
     else:
       weights['distanceToHome'] = 0
