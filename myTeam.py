@@ -778,7 +778,10 @@ class DefensiveAgent(BaseAgent):
         and gameState.getAgentState(opp).isPacman
       ]
       if visibleInvaderPositions:
-        weights['invaderDistance'] = 30
+        if myState.scaredTimer > 10:
+          weights['invaderDistance'] = 12  # shadow: stay at safe distance
+        else:
+          weights['invaderDistance'] = 30  # timer almost up: full flee
         weights['numInvaders'] = 0
         weights['distanceToTarget'] = 0
       else:
