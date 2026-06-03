@@ -515,10 +515,12 @@ class OffensiveAgent(BaseAgent):
       return weights
 
     # Comeback return: carrying enough food to flip the score
+    # Suppress when all ghosts are scared — keep attacking freely
     score = self.getScore(gameState)
     if score < 0 and carrying >= abs(score) + 1:
-      weights['distanceToHome'] = -300
-      return weights
+      if not (scaredGhosts and not activeGhosts):
+        weights['distanceToHome'] = -300
+        return weights
 
     # All-but-two endgame: sprint aggressively for remaining food
     remaining = len(self.getFood(gameState).asList())
