@@ -525,7 +525,7 @@ class OffensiveAgent(BaseAgent):
       if minGhostDistW <= 10:
         weights['distanceToCapsule'] = -4
     if ghostNear:
-      weights['distanceToCapsule'] = -12
+      weights['distanceToCapsule'] = -25
 
     if carrying >= self.RETURN_THRESHOLD or ghostNear:
       weights['distanceToHome'] = -15 - 3 * carrying
@@ -661,7 +661,9 @@ class DefensiveAgent(BaseAgent):
         return min(important, key=lambda f: self.getMazeDistance(invaderPos, f))
       return invaderPos
 
-    # No invaders: rotate through patrol points
+    # No invaders: guard the food most vulnerable to quick grabs (closest to entry boundary)
+    if myFood:
+      return min(myFood, key=lambda f: self.distanceToHome(f))
     return self.patrolPoints[self.patrolIdx]
 
   def _getInvaders(self, gameState, successor):
@@ -739,7 +741,7 @@ class DefensiveAgent(BaseAgent):
 
     if visibleInv and myState.scaredTimer == 0:
       minDist = min(self.getMazeDistance(myPos, p) for p in visibleInv)
-      if minDist <= 3:
+      if minDist <= 6:
         weights['invaderDistance'] = -20
         weights['distanceToTarget'] = 0
 
