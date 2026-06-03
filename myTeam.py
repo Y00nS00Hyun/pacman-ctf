@@ -105,6 +105,11 @@ class BaseAgent(CaptureAgent):
       globals()['_DEAD_END_DEPTH'] = _computeDeadEndDepth(walls)
     self.deadEndDepth = _DEAD_END_DEPTH
 
+    self.boundaryDist = {}
+    for pos in self.legalPositions:
+      if self.boundary:
+        self.boundaryDist[pos] = min(self.getMazeDistance(pos, b) for b in self.boundary)
+
     self.recentPositions = deque(maxlen=8)
 
   def _computeBoundary(self, gameState):
@@ -133,6 +138,11 @@ class BaseAgent(CaptureAgent):
     return features * weights
 
   def distanceToHome(self, pos):
+    if not self.boundary:
+      return 0
+    key = (int(pos[0]), int(pos[1]))
+    if key in self.boundaryDist:
+      return self.boundaryDist[key]
     return min(self.getMazeDistance(pos, b) for b in self.boundary)
 
   def isOurSide(self, pos):
